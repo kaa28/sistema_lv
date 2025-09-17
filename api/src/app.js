@@ -5,7 +5,7 @@ dotenv.config();
 
 // Importando as rotas
 import veiculoRoute from './routes/veiculoRoute.js';
-//import categoriaRoute from './routes/categoriaRoute.js'
+import usuarioRoute from './routes/usuarioRoute.js';
 
 const app = express();
 
@@ -30,7 +30,7 @@ app.get('/',(req,res)=>{
 
 // Configurando as rotas
 app.use('/', veiculoRoute);
-//app.use('/api', categoriaRoute);
+app.use('/usuario', usuarioRoute);
 
 const PORT = process.env.PORT || 3000; 
 app.listen(PORT,()=>{
