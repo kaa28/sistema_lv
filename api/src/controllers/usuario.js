@@ -1,422 +1,132 @@
-// Endpoint para renovar sessão do usuário
-export const renovarSessao = async (req, res) => {
-    try {
-        const { id } = req.body;
-        if (!id) {
-            return res.status(400).json({
-                success: false,
-                statusCode: 400,
-                mensagem: "ID do usuário é obrigatório",
-                data: null
-            });
-        }
-
-        const usuario = await UsuarioModel.buscarPorId(id);
-        if (!usuario) {
-            return res.status(401).json({
-                success: false,
-                statusCode: 401,
-                mensagem: "Usuário inválido",
-                data: null
-            });
-        }
-
-        // Aqui você pode gerar um novo token ou atualizar o tempo de sessão
-        // Exemplo: const novoToken = gerarToken(usuario);
-
-        return res.status(200).json({
-            success: true,
-            statusCode: 200,
-            mensagem: "Sessão renovada com sucesso",
-            // token: novoToken, // se usar JWT
-            data: usuario
-        });
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            statusCode: 500,
-            mensagem: error.message,
-            data: null
-        });
-    }
-};
-import * as UsuarioModel from "../models/UsuarioModel.js";
-
-export const cadastrar = async (req, res) => {
-    try {
-        const usuario = req.body;
-        
-        const {nome, email, senha,cargo} = usuario
-        if(!nome || !email || !senha || !cargo){
-            const resposta  = {
-                "success": false,
-                "status": "erro",
-                "statusCode": 400,
-                "mensagem": "Todos os campos são obrigatórios"
-            }
-            return res.status(400).json(resposta);
-        }
-        
-        const usuarioId = await UsuarioModel.cadastrar(usuario);
-        console.log(usuario);
-
-        const resposta = {
-                "success": true,
-                "statusCode": 201,
-                "mensagem": "Usuário cadastrado com sucesso",
-                "data": usuarioId
-        }
-        return res.status(201).json(resposta);
-    } catch (error) {
-        const resposta = {
-                "success": false,
-                "statusCode": 500,
-                "mensagem": error.message,
-                "data": null
-        }
-        res.status(500).json(resposta);
-    }
-};
+import * as Usuario from '../models/UsuarioModel.js';
+import * as Token from '../models/Token.js';
 
 export const login = async (req, res) => {
     try {
-        const { email, senha } = req.body;
-
+        const { email, senha } = req.body || {};
         if (!email || !senha) {
-            const resposta = {
-                "success": false,
-                "statusCode": 400,
-                "mensagem": "Email e senha são obrigatórios",
-                "data": null
-            };
-            return res.status(400).json(resposta);
+            return res.status(400).json({ success: false, status: 400, erro: 'Email e senha são obrigatórios' });
         }
 
-        const usuario = await UsuarioModel.login(email, senha);
-        console.log(usuario);
-        
-        if (!usuario) {
-            const resposta = {
-                "success": false,
-                "statusCode": 401,
-                "mensagem": "Credenciais inválidas",
-                "data": null
-            };
-            return res.status(401).json(resposta);
+        const user = await Usuario.login(email, senha);
+        if (!user) {
+            return res.status(401).json({ success: false, status: 401, erro: 'Credenciais inválidas' });
         }
 
-        const resposta = {
-            "success": true,
-            "statusCode": 200,
-            "mensagem": "Login realizado com sucesso",
-            "data": usuario
-        };
-        res.status(200).json(resposta);
+        const horas = 24;
+        const sessao = await Token.criar(user.id, new Date(Date.now() + horas * 3600 * 1000));
+
+        return res.status(200).json({
+            success: true,
+            status: 200,
+            mensagem: 'Login realizado com sucesso',
+            token: sessao.chave_token,
+            usuario: { id: user.id, nome: user.nome, email: user.email }
+        });
     } catch (error) {
-        const resposta = {
-            "success": false,
-            "statusCode": 500,
-            "mensagem": error.message,
-            "data": null
-        };
-        res.status(500).json(resposta);
+        console.error('Erro no login:', error);
+        return res.status(500).json({ success: false, status: 500, erro: 'Erro interno do servidor' });
     }
 };
 
-export const listar = async (req, res) => {
+export const logout = async (req, res) => {
     try {
-        const search = req.query.search || "";
-        const usuarios = await UsuarioModel.listar(search);
-
-        if (!usuarios) {
-            const resposta = {
-                "success": false,
-                "statusCode": 404,
-                "quantidade": 0,
-                "mensagem": "Nenhum usuário encontrado",
-                "data": null
+        const authHeader = req.headers.authorization;
+        let token = null;
+        
+        if (authHeader) {
+            const [bearer, t] = authHeader.split(' ');
+            if (bearer === 'Bearer' && t) token = t;
+        }
+        
+        if (token) {
+            const tokenData = await Token.consultar(token);
+            if (tokenData?.usuario) {
+                await Token.revogar(tokenData.usuario);
             }
-            return res.status(404).json(resposta);
         }
-        const resposta = {
-            "success": true,
-            "statusCode": 200,
-            "quantidade": usuarios.length,
-            "mensagem": "Lista de usuários",
-            "data": usuarios
-        }
-        res.status(200).json(resposta);
+        
+        return res.status(200).json({ success: true, status: 200, mensagem: 'Logout realizado' });
     } catch (error) {
-        const resposta = {
-            "success": false,
-            "statusCode": 500,
-            "quantidade": 0,
-            "mensagem": error.message,
-            "data": null
-        }
-        res.status(500).json(resposta);
+        console.error('Erro no logout:', error);
+        return res.status(500).json({ success: false, status: 500, erro: 'Erro interno do servidor' });
     }
 };
 
-export const buscarPorId = async (req, res) => {
+export const consultarLogado = async (req, res) => {
+    if (!req.usuario) {
+        return res.status(401).json({ success: false, status: 401, erro: 'Não autenticado' });
+    }
+    return res.status(200).json({ success: true, status: 200, data: req.usuario });
+};
+
+// Abaixo, handlers básicos utilizando o model de usuário
+export const consultar = async (req, res) => {
+    try {
+        const filtro = req.query.search || '';
+        const dados = await Usuario.consultar(filtro);
+        return res.status(200).json({ success: true, status: 200, data: dados });
+    } catch (error) {
+        return res.status(500).json({ success: false, status: 500, erro: 'Erro ao consultar usuários' });
+    }
+};
+
+export const consultarPorId = async (req, res) => {
     try {
         const id = req.params.id;
-        const usuario = await UsuarioModel.buscarPorId(id);
-        if (!usuario) {
-            const resposta = {
-                "success": false,
-                "statusCode": 404,
-                "mensagem": "Usuário não encontrado",
-                "data": null
-            }
-            return res.status(404).json(resposta);
+        const dados = await Usuario.consultarPorId(id);
+        if (!dados || dados.length === 0) {
+            return res.status(404).json({ success: false, status: 404, erro: 'Usuário não encontrado' });
         }
-        const resposta = {
-            "success": true,
-            "statusCode": 200,
-            "mensagem": "Usuário encontrado",
-            "data": usuario
-        }
-        res.status(200).json(resposta);
+        return res.status(200).json({ success: true, status: 200, data: dados[0] });
     } catch (error) {
-        const resposta = {
-            "success": false,
-            "statusCode": 500,
-            "mensagem": error.message,
-            "data": null
-        }
-        res.status(500).json(resposta);
+        return res.status(500).json({ success: false, status: 500, erro: 'Erro ao consultar usuário' });
     }
 };
 
-export const buscarPorEmail = async (req, res) => {
+export const cadastrar = async (req, res) => {
     try {
-        const email = req.params.email;
-        const usuario = await UsuarioModel.buscarPorEmail(email);
-        if (!usuario) {
-            const resposta = {
-                "success": false,
-                "statusCode": 404,
-                "mensagem": "Usuário não encontrado",
-                "data": null
-            }
-            return res.status(404).json(resposta);
+        const { nome, email, senha } = req.body || {};
+        if (!nome || !email || !senha) {
+            return res.status(400).json({ success: false, status: 400, erro: 'nome, email e senha são obrigatórios' });
         }
-        const resposta = {
-            "success": true,
-            "statusCode": 200,
-            "mensagem": "Usuário encontrado",
-            "data": usuario
-        }
-        res.status(200).json(resposta);
+
+        const novo = await Usuario.cadastrar({ nome, email, senha });
+        const user = Array.isArray(novo) ? novo[0] : novo;
+
+        const horas = 24;
+        const sessao = await Token.criar(user.id, new Date(Date.now() + horas * 3600 * 1000));
+
+        return res.status(201).json({
+            success: true,
+            status: 201,
+            data: user,
+            token: sessao.chave_token
+        });
     } catch (error) {
-        const resposta = {
-            "success": false,
-            "statusCode": 500,
-            "mensagem": error.message,
-            "data": null
+        if (error?.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ success: false, status: 409, erro: 'E-mail já cadastrado' });
         }
-        res.status(500).json(resposta);
+        return res.status(500).json({ success: false, status: 500, erro: 'Erro ao cadastrar usuário' });
     }
 };
 
-export const atualizarTudo = async (req, res) => {
+export const alterar = async (req, res) => {
     try {
-        const { id } = req.params; // Desestrutura o ID da requisição
-        const usuario = req.body; // Obtém os dados do usuário do corpo da requisição
-
-        if (!id) {
-            // Se o ID não for fornecido, retorna erro 400 (Bad Request)
-            const resposta = {
-                "success": false,
-                "statusCode": 400,
-                "mensagem": "ID do usuário é obrigatório.",
-                "data": null
-            };
-            return res.status(400).json(resposta);
-        }
-
-        if(!Number(id)){
-            // Se o ID não for um número válido, retorna erro 400 (Bad Request)
-            const resposta = {
-                "success": false,
-                "statusCode": 400,
-                "mensagem": "ID do usuário deve ser um número válido.",
-                "data": null
-            };
-            return res.status(400).json(resposta);
-        }   
-
-        const { nome, email, senha, cargo } = usuario;
-        if (!nome || !email || !senha || !cargo) {
-            // Se algum campo obrigatório estiver faltando, retorna erro 400 (Bad Request)
-            const resposta = {
-                "success": false,
-                "statusCode": 400,
-                "mensagem": "Todos os campos (nome, email, senha, cargo, avatar) são obrigatórios.",
-                "data": null
-            };
-            return res.status(400).json(resposta);
-        }
-
-        // Chama a model para atualizar o usuário
-        const resultado = await UsuarioModel.atualizar(id, usuario);
-
-        // Verifica se a operação afetou alguma linha no banco
-        if (!resultado) {
-            // Se nenhuma linha foi afetada, o usuário não existe. Retorna 404.
-            const resposta = {
-                "success": false,
-                "statusCode": 404,
-                "mensagem": "Usuário não encontrado.",
-                "data": null
-            };
-            return res.status(404).json(resposta);
-        }
-
-        // Se o usuário foi atualizado, retorna 200 de sucesso
-        const resposta = {
-            "success": true,
-            "statusCode": 200,
-            "mensagem": "Usuário atualizado com sucesso.",
-            "data": resultado
-        };
-        return res.status(200).json(resposta);
-
+        const usuario = { ...(req.body || {}), id: parseInt(req.params.id, 10) };
+        const dados = await Usuario.alterar(usuario);
+        return res.status(200).json({ success: true, status: 200, data: dados });
     } catch (error) {
-        // Se ocorrer qualquer erro, retorna a resposta de erro 500
-        const resposta = {
-            "success": false,
-            "statusCode": 500,
-            "mensagem": error.message,
-            "data": null
-        };
-        return res.status(500).json(resposta);
-    }
-};
-
-export const atualizar = async (req, res) => {
-    try {
-        const { id } = req.params; // Desestrutura o ID da requisição
-        const usuario = req.body; // Obtém os dados do usuário do corpo da requisição
-
-        if (!id) {
-            // Se o ID não for fornecido, retorna erro 400 (Bad Request)
-            const resposta = {
-                "success": false,
-                "statusCode": 400,
-                "mensagem": "ID do usuário é obrigatório.",
-                "data": null
-            };
-            return res.status(400).json(resposta);
-        }
-
-        if(!Number(id)){
-            // Se o ID não for um número válido, retorna erro 400 (Bad Request)
-            const resposta = {
-                "success": false,
-                "statusCode": 400,
-                "mensagem": "ID do usuário deve ser um número válido.",
-                "data": null
-            };
-            return res.status(400).json(resposta);
-        }   
-
-        
-        // Chama a model para atualizar o usuário
-        const resultado = await UsuarioModel.atualizar(id, usuario);
-
-        // Verifica se a operação afetou alguma linha no banco
-        if (!resultado) {
-            // Se nenhuma linha foi afetada, o usuário não existe. Retorna 404.
-            const resposta = {
-                "success": false,
-                "statusCode": 404,
-                "mensagem": "Usuário não encontrado.",
-                "data": null
-            };
-            return res.status(404).json(resposta);
-        }
-
-        // Se o usuário foi atualizado, retorna 200 de sucesso
-        const resposta = {
-            "success": true,
-            "statusCode": 200,
-            "mensagem": "Usuário atualizado com sucesso.",
-            "data": resultado
-        };
-        return res.status(200).json(resposta);
-
-    } catch (error) {
-        // Se ocorrer qualquer erro, retorna a resposta de erro 500
-        const resposta = {
-            "success": false,
-            "statusCode": 500,
-            "mensagem": error.message,
-            "data": null
-        };
-        return res.status(500).json(resposta);
+        return res.status(500).json({ success: false, status: 500, erro: 'Erro ao alterar usuário' });
     }
 };
 
 export const deletar = async (req, res) => {
     try {
-        const { id } = req.params; // Desestrutura o ID da requisição
-
-        if (!id) {
-            // Se o ID não for fornecido, retorna erro 400 (Bad Request)
-            const resposta = {
-                "success": false,
-                "statusCode": 400,
-                "mensagem": "ID do usuário é obrigatório.",
-                "data": null
-            };
-            return res.status(400).json(resposta);
-        }
-
-        if(!Number(id)){
-            // Se o ID não for um número válido, retorna erro 400 (Bad Request)
-            const resposta = {
-                "success": false,
-                "statusCode": 400,
-                "mensagem": "ID do usuário deve ser um número válido.",
-                "data": null
-            };
-            return res.status(400).json(resposta);
-        }   
-
-        // Chama a model para deletar o usuário
-        const resultado = await UsuarioModel.deletar(id);
-        
-        // Verifica se a operação afetou alguma linha no banco
-        if (!resultado) {
-            // Se nenhuma linha foi afetada, o usuário não existe. Retorna 404.
-            const resposta = {
-                "success": false,
-                "statusCode": 404,
-                "mensagem": "Usuário não encontrado.",
-                "data": null
-            };
-            return res.status(404).json(resposta);
-        }
-
-        // Se o usuário foi deletado, retorna 200 de sucesso
-        const resposta = {
-            "success": true,
-            "statusCode": 200,
-            "mensagem": "Usuário deletado com sucesso.",
-            "data": null
-        };
-        return res.status(200).json(resposta);
-
+        const id = req.params.id;
+        await Usuario.deletar(id);
+        return res.status(200).json({ success: true, status: 200, mensagem: 'Usuário deletado' });
     } catch (error) {
-        // Se ocorrer qualquer erro, retorna a resposta de erro 500
-        const resposta = {
-            "success": false,
-            "statusCode": 500,
-            "mensagem": error.message,
-            "data": null
-        };
-        return res.status(500).json(resposta);
+        return res.status(500).json({ success: false, status: 500, erro: 'Erro ao deletar usuário' });
     }
 };
