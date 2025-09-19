@@ -94,7 +94,8 @@ CREATE TABLE `veiculo` (
   `tipo_cambio` varchar(50) DEFAULT NULL,
   `tipo_direcao` varchar(50) DEFAULT NULL,
   `data_cadastro` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `data_alteracao` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `data_alteracao` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `usuario_id` int UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
@@ -186,7 +187,8 @@ ALTER TABLE `veiculo`
 --
 ALTER TABLE `veiculo`
   ADD CONSTRAINT `veiculo_ibfk_1` FOREIGN KEY (`categoria_id`) REFERENCES `categoria` (`id`),
-  ADD CONSTRAINT `veiculo_ibfk_2` FOREIGN KEY (`montadora_id`) REFERENCES `montadora` (`id`);
+  ADD CONSTRAINT `veiculo_ibfk_2` FOREIGN KEY (`montadora_id`) REFERENCES `montadora` (`id`),
+  ADD CONSTRAINT `fk_veiculo_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
